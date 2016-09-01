@@ -2,7 +2,6 @@
 
 require 'aws-sdk'
 require 'net/http'
-require 'openssl'
 require 'json'
 require 'uri'
 require 'yaml'
@@ -66,7 +65,7 @@ poller.poll do |msg|
         log.info "Callback #{callbackurl}"
         uri = URI(callbackurl)
         begin
-          res = Net::HTTP.start(uri.host, uri.port, {:use_ssl => uri.scheme == 'https', :verify_mode => OpenSSL::SSL::VERIFY_NONE}) do |http|
+          res = Net::HTTP.start(uri.host, uri.port, {:use_ssl => uri.scheme == 'https', :verify_mode => 0}) do |http|
             req = Net::HTTP::Post.new(uri)
             params = {"filename" => key, "status" => status}
             log.info "Response callback"
