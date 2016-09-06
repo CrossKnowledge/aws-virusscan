@@ -25,19 +25,19 @@ poller.poll do |msg|
     body['Records'].each do |record|
       bucket = record['s3']['bucket']['name']
       key = URI.decode(record['s3']['object']['key']).gsub('+', ' ')
-      log.debug "scanning s3://#{bucket}/#{key}..."
+      log.info "scanning s3://#{bucket}/#{key}..."
       begin
         resp = s3.get_object(
           response_target: '/tmp/target',
           bucket: bucket,
           key: key
         )
-      rescue Aws::S3::Errors::NoSuchKey
-        log.debug "s3://#{bucket}/#{key} does no longer exist"
+      rescue
+        log.info "s3://#{bucket}/#{key} does no longer exist"
         next
       end
       if system('clamscan /tmp/target')
-        log.debug "s3://#{bucket}/#{key} was scanned without findings"
+        log.info "s3://#{bucket}/#{key} was scanned without findings"
         status = 'OK'
       else
         log.error "s3://#{bucket}/#{key} is infected"
@@ -74,7 +74,7 @@ poller.poll do |msg|
             http.request(req)
           end
         rescue
-          log.error "Post callback error file: #{key}, url: #{callbackurl}"
+          log.info "Post callback error file: #{key}, url: #{callbackurl}"
         end
       end
       system('rm /tmp/target')
