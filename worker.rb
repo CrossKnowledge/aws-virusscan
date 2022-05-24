@@ -7,6 +7,8 @@ require 'uri'
 require 'yaml'
 require 'syslog/logger'
 
+# 1GB
+LIMIT_SIZE = 1000000000
 
 log = Syslog::Logger.new 's3-virusscan'
 conf = YAML::load_file(__dir__ + '/s3-virusscan.conf')
@@ -27,39 +29,51 @@ poller.poll do |msg|
       key = URI.decode(record['s3']['object']['key']).gsub('+', ' ')
       log.info "scanning s3://#{bucket}/#{key}..."
       begin
-        resp = s3.get_object(
-          response_target: '/tmp/target',
+        head_response = s3.head_object(
           bucket: bucket,
           key: key
         )
+        filesize = head_response.content_length
+        log.info "s3://#{bucket}/#{key} file size : #{filesize}"
+        if filesize <= LIMIT_SIZE
+          log.info "s3://#{bucket}/#{key} is under the limitation"
+          get_response = s3.get_object(
+            response_target: '/tmp/target',
+            bucket: bucket,
+            key: key
+          )
+          if system('clamscan /tmp/target')
+            log.info "s3://#{bucket}/#{key} was scanned without findings"
+            status = 'OK'
+          else
+            log.error "s3://#{bucket}/#{key} is infected"
+            sns.publish(
+              topic_arn: conf['topic'],
+              message: "s3://#{bucket}/#{key} is infected",
+              subject: "s3-virusscan s3://#{bucket}",
+              message_attributes: {
+                "key" => {
+                  data_type: "String",
+                  string_value: "s3://#{bucket}/#{key}"
+                }
+              }
+            )
+            status = 'KO'
+          end
+        else
+          status = 'OK'
+          log.info "s3://#{bucket}/#{key} was not scanned because it reach the size limit"
+        end
       rescue
         log.info "s3://#{bucket}/#{key} does no longer exist"
         next
       end
-      if system('clamscan /tmp/target')
-        log.info "s3://#{bucket}/#{key} was scanned without findings"
-        status = 'OK'
-      else
-        log.error "s3://#{bucket}/#{key} is infected"
-        sns.publish(
-          topic_arn: conf['topic'],
-          message: "s3://#{bucket}/#{key} is infected",
-          subject: "s3-virusscan s3://#{bucket}",
-          message_attributes: {
-            "key" => {
-              data_type: "String",
-              string_value: "s3://#{bucket}/#{key}"
-            }
-          }
-        )
-        status = 'KO'
-      end
 
       log.info "Response metadata"
-      log.info resp.metadata
+      log.info head_response.metadata
 
       log.info "File id: #{key} status: #{status}"
-      metadata = resp.metadata
+      metadata = head_response.metadata
       if (metadata.has_key?("callback-url"))
         callbackurl = metadata["callback-url"]
         log.info "Callback #{callbackurl}"
