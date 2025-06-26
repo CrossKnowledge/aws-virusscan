@@ -3,7 +3,7 @@
 require 'aws-sdk'
 require 'net/http'
 require 'json'
-require 'uri'
+require 'cgi'
 require 'yaml'
 require 'syslog/logger'
 
@@ -26,7 +26,7 @@ poller.poll do |msg|
   if body.key?('Records')
     body['Records'].each do |record|
       bucket = record['s3']['bucket']['name']
-      key = URI.decode(record['s3']['object']['key']).gsub('+', ' ')
+      key = CGI.unescape(record['s3']['object']['key']).gsub('+', ' ')
       log.info "scanning s3://#{bucket}/#{key}..."
       begin
         head_response = s3.head_object(
